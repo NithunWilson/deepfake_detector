@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deepfake Detection System</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            border-radius: 15px 15px 0 0 !important;
+        }
+        .upload-area {
+            background-color: #f8f9fa;
+            border: 3px dashed #dee2e6;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #0d6efd;
+            background-color: rgba(13, 110, 253, 0.05);
+        }
+        .progress {
+            border-radius: 10px;
+            height: 10px;
+        }
+        .footer {
+            background: linear-gradient(135deg, #343a40 0%, #212529 100%);
+        }
+        .accuracy-badge {
+            font-size: 0.9rem;
+            padding: 0.25rem 0.5rem;
+        }
+        .real-badge {
+            background-color: #28a745;
+            color: white;
+        }
+        .fake-badge {
+            background-color: #dc3545;
+            color: white;
+        }
+        .overall-badge {
+            background-color: #0d6efd;
+            color: white;
+        }
+        .frame-preview {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin: 5px;
+            border: 2px solid #dee2e6;
+            transition: transform 0.2s;
+        }
+        .frame-preview:hover {
+            transform: scale(1.05);
+            border-color: #0d6efd;
+        }
+        #modelSpinner {
+            display: none;
+        }
+        #loading {
+            display: none;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-shield-alt me-2"></i>Deepfake Detector
+            </a>
+            <div class="navbar-text">
+                {% if model_info.loaded %}
+                <span class="badge bg-success">Model Loaded</span>
+                {% else %}
+                <span class="badge bg-warning">Demo Mode</span>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mt-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h1 class="card-title mb-3">
+                            <i class="fas fa-video me-2"></i>Deepfake Detection System
+                        </h1>
+                        <p class="card-text lead">
+                            Upload a video to analyze for deepfake detection using AI
+                        </p>
+                        
+                        <!-- Model Status -->
+                        <div class="alert {% if model_info.loaded %}alert-success{% else %}alert-warning{% endif %} mb-3" id="modelStatus">
+                            <div class="d-flex align-items-center justify-content-center">
+                                <span id="modelStatusText">
+                                    {% if model_info.loaded %}
+                                    ✓ Model loaded: {{ model_info.name }} ({{ "%.1f"|format(model_info.accuracy) }}% accuracy)
+                                    {% else %}
+                                    ⚠ Demo Mode - Model not loaded
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <!-- Accuracy Display -->
+                        {% if model_info.loaded %}
+                        <div class="row justify-content-center">
+                            <div class="col-auto">
+                                <span class="badge overall-badge accuracy-badge">
+                                    <i class="fas fa-chart-line me-1"></i> Accuracy: {{ "%.1f"|format(model_info.accuracy) }}%
+                                </span>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Error Alert -->
+                        <div class="alert alert-danger mt-3" id="errorAlert" style="display: none;">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <span id="errorMessage"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="row">
+            <div class="col-lg-8 mx-auto">
+                <div class="card">
+                    <div class="card-header {% if model_info.loaded %}bg-primary{% else %}bg-secondary{% endif %} text-white">
+                        <h4 class="mb-0">
+                            <i class="fas fa-upload me-2"></i>
+                            {% if model_info.loaded %}Upload Video{% else %}Demo Mode Available{% endif %}
+                        </h4>
+                    </div>
+                    <div class="card-body">
+                        <!-- Upload Area -->
+                        <div class="upload-area text-center p-5 rounded mb-4" id="uploadArea">
+                            <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                            <h5>Drag & Drop Video Here</h5>
+                            <p class="text-muted">or click to browse</p>
+                            <p class="small text-muted">
+                                Supported: MP4, AVI, MOV, MKV<br>
+                                Max size: 50MB
+                            </p>
+                            <input type="file" id="videoInput" accept="video/*" class="d-none">
+                        </div>
+
+                        <!-- File Info -->
+                        <div class="mb-3" id="fileInfo" style="display: none;">
+                            <div class="alert alert-success">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong id="fileName">File Name</strong><br>
+                                        <small id="fileSize" class="text-muted">File Size</small>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-danger" id="removeFile">
+                                        <i class="fas fa-times"></i> Remove
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Settings -->
+                        <div class="mb-4">
+                            <label for="sequenceLength" class="form-label">
+                                <i class="fas fa-film me-2"></i>Frames to Analyze: <span id="sliderValue" class="badge bg-primary">60</span>
+                            </label>
+                            <input type="range" class="form-range" id="sequenceLength" 
+                                   min="30" max="120" value="60" step="10">
+                            <div class="d-flex justify-content-between">
+                                <small class="text-muted">Faster (30)</small>
+                                <small class="text-muted">Balanced (60)</small>
+                                <small class="text-muted">Accurate (120)</small>
+                            </div>
+                        </div>
+
+                        <!-- Loading Spinner -->
+                        <div class="text-center mb-3" id="loading" style="display: none;">
+                            <div class="spinner"></div>
+                            <p class="mt-2">Processing video... This may take a moment.</p>
+                            <div class="progress mb-3" id="progressBar" style="display: none;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     style="width: 0%"></div>
+                            </div>
+                            <small class="text-muted" id="progressText" style="display: none;">
+                                Status: <span id="progressPercent">0%</span> - 
+                                <span id="processingSteps">Starting...</span>
+                            </small>
+                        </div>
+
+                        <!-- Buttons -->
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary btn-lg" id="analyzeBtn" disabled>
+                                <i class="fas fa-play-circle me-2"></i>Analyze Video
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="row mt-4" id="resultsSection" style="display: none;">
+            <div class="col-lg-8 mx-auto">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h4 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Analysis Results</h4>
+                    </div>
+                    <div class="card-body">
+                        <!-- Results Header -->
+                        <div class="text-center mb-4">
+                            <h3 id="predictionText" class="mb-3"></h3>
+                            <div class="display-1 fw-bold mb-3" id="confidenceScore"></div>
+                        </div>
+
+                        <!-- Probability Bars -->
+                        <div class="mb-4" id="probabilityBars" style="display: none;">
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span><i class="fas fa-check-circle text-success me-2"></i>Real Probability</span>
+                                    <span id="realProbability" class="fw-bold"></span>
+                                </div>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar bg-success" id="realBar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span><i class="fas fa-times-circle text-danger me-2"></i>Fake Probability</span>
+                                    <span id="fakeProbability" class="fw-bold"></span>
+                                </div>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar bg-danger" id="fakeBar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Details -->
+                        <div class="row mb-4">
+                            <div class="col-md-6 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-header">
+                                        <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Analysis Details</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <p class="mb-2">
+                                            <i class="fas fa-film me-2 text-muted"></i>
+                                            <strong>Frames Analyzed:</strong> 
+                                            <span id="framesAnalyzed" class="float-end">-</span>
+                                        </p>
+                                        <p class="mb-2">
+                                            <i class="fas fa-clock me-2 text-muted"></i>
+                                            <strong>Processing Time:</strong> 
+                                            <span id="processingTime" class="float-end">-</span>
+                                        </p>
+                                        <p class="mb-2">
+                                            <i class="fas fa-calendar me-2 text-muted"></i>
+                                            <strong>Timestamp:</strong> 
+                                            <span id="timestamp" class="float-end">-</span>
+                                        </p>
+                                        <p class="mb-0">
+                                            <i class="fas fa-video me-2 text-muted"></i>
+                                            <strong>Video:</strong> 
+                                            <span id="videoName" class="float-end">-</span>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-header">
+                                        <h6 class="mb-0"><i class="fas fa-brain me-2"></i>Model Information</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <p class="mb-2">
+                                            <i class="fas fa-cube me-2 text-muted"></i>
+                                            <strong>Model:</strong> 
+                                            <span id="modelName" class="float-end">{{ model_info.name }}</span>
+                                        </p>
+                                        <p class="mb-2">
+                                            <i class="fas fa-bolt me-2 text-muted"></i>
+                                            <strong>Status:</strong> 
+                                            <span id="modelStatusBadge" class="float-end">
+                                                {% if model_info.loaded %}
+                                                <span class="badge bg-success">Loaded</span>
+                                                {% else %}
+                                                <span class="badge bg-warning">Demo</span>
+                                                {% endif %}
+                                            </span>
+                                        </p>
+                                        <p class="mb-0">
+                                            <i class="fas fa-percentage me-2 text-muted"></i>
+                                            <strong>Accuracy:</strong> 
+                                            <span id="modelAccuracy" class="float-end">{{ "%.1f"|format(model_info.accuracy) }}%</span>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Frame Previews -->
+                        <div class="mb-4" id="previewsSection" style="display: none;">
+                            <h5 class="mb-3"><i class="fas fa-images me-2"></i>Extracted Frames</h5>
+                            <div class="row g-2" id="framePreviews">
+                                <!-- Preview images will be added here -->
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="d-flex justify-content-between">
+                            <button class="btn btn-outline-primary" id="analyzeAnotherBtn">
+                                <i class="fas fa-redo me-2"></i>Analyze Another
+                            </button>
+                            <button class="btn btn-success" id="downloadReportBtn" disabled>
+                                <i class="fas fa-download me-2"></i>Download Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer mt-5 py-4 text-white">
+        <div class="container text-center">
+            <p class="mb-0">
+                <i class="fas fa-shield-alt me-2"></i>Deepfake Detection System v1.0<br>
+                <small class="text-light">Powered by PyTorch & Flask | CNN-LSTM Architecture</small>
+            </p>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    $(document).ready(function() {
+        let selectedFile = null;
+        let startTime = null;
+        
+        // Update slider value display
+        $('#sequenceLength').on('input', function() {
+            $('#sliderValue').text($(this).val());
+        });
+        
+        // File upload area click
+        $('#uploadArea').click(function() {
+            $('#videoInput').click();
+        });
+        
+        // Handle file selection
+        $('#videoInput').change(function(e) {
+            if (e.target.files.length > 0) {
+                selectedFile = e.target.files[0];
+                
+                // Check file size (50MB limit)
+                if (selectedFile.size > 50 * 1024 * 1024) {
+                    showError('File size exceeds 50MB limit. Please choose a smaller video.');
+                    $('#videoInput').val('');
+                    selectedFile = null;
+                    return;
+                }
+                
+                // Check file type
+                const allowedTypes = ['video/mp4', 'video/avi', 'video/quicktime', 'video/x-matroska'];
+                if (!allowedTypes.includes(selectedFile.type) && !selectedFile.name.match(/\.(mp4|avi|mov|mkv)$/i)) {
+                    showError('Please select a valid video file (MP4, AVI, MOV, MKV).');
+                    $('#videoInput').val('');
+                    selectedFile = null;
+                    return;
+                }
+                
+                displayFileInfo();
+                $('#analyzeBtn').prop('disabled', false);
+                $('#errorAlert').hide();
+            }
+        });
+        
+        // Drag and drop
+        $('#uploadArea').on('dragover', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).css('border-color', '#0d6efd');
+            $(this).css('background-color', 'rgba(13, 110, 253, 0.1)');
+        });
+        
+        $('#uploadArea').on('dragleave', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).css('border-color', '#dee2e6');
+            $(this).css('background-color', '#f8f9fa');
+        });
+        
+        $('#uploadArea').on('drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).css('border-color', '#dee2e6');
+            $(this).css('background-color', '#f8f9fa');
+            
+            if (e.originalEvent.dataTransfer.files.length > 0) {
+                selectedFile = e.originalEvent.dataTransfer.files[0];
+                
+                // Check file size
+                if (selectedFile.size > 50 * 1024 * 1024) {
+                    showError('File size exceeds 50MB limit. Please choose a smaller video.');
+                    return;
+                }
+                
+                $('#videoInput').prop('files', e.originalEvent.dataTransfer.files);
+                displayFileInfo();
+                $('#analyzeBtn').prop('disabled', false);
+                $('#errorAlert').hide();
+            }
+        });
+        
+        // Remove file
+        $('#removeFile').click(function() {
+            selectedFile = null;
+            $('#videoInput').val('');
+            $('#fileInfo').hide();
+            $('#analyzeBtn').prop('disabled', true);
+        });
+        
+        // Analyze button click
+        $('#analyzeBtn').click(function() {
+            if (!selectedFile) return;
+            
+            // Reset previous results and errors
+            $('#resultsSection').hide();
+            $('#errorAlert').hide();
+            
+            startTime = new Date();
+            startAnalysis();
+        });
+        
+        // Analyze another button
+        $('#analyzeAnotherBtn').click(function() {
+            $('#resultsSection').hide();
+            $('#fileInfo').hide();
+            $('#videoInput').val('');
+            selectedFile = null;
+            $('#analyzeBtn').prop('disabled', true);
+            $('#uploadArea').show();
+        });
+        
+        // Display file info
+        function displayFileInfo() {
+            $('#fileName').text(selectedFile.name);
+            $('#fileSize').text(formatFileSize(selectedFile.size));
+            $('#fileInfo').show();
+        }
+        
+        // Format file size
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // Start analysis
+        async function startAnalysis() {
+            try {
+                // Show loading
+                $('#loading').show();
+                $('#analyzeBtn').prop('disabled', true);
+                updateProgress('Uploading video...', 10);
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('video', selectedFile);
+                formData.append('sequence_length', $('#sequenceLength').val());
+                
+                // Upload video with timeout
+                const uploadResponse = await fetchWithTimeout('/upload', {
+                    method: 'POST',
+                    body: formData,
+                    timeout: 60000  // 60 seconds for upload
+                });
+                
+                if (!uploadResponse.ok) {
+                    const errorText = await uploadResponse.text();
+                    throw new Error(`Upload failed: ${uploadResponse.status} ${errorText}`);
+                }
+                
+                const uploadResult = await uploadResponse.json();
+                
+                if (!uploadResult.success) {
+                    throw new Error(uploadResult.error || 'Upload failed');
+                }
+                
+                // Process video
+                updateProgress('Processing video frames...', 40);
+                const processResponse = await fetchWithTimeout('/process', {
+                    method: 'GET',
+                    timeout: 120000  // 2 minutes for processing
+                });
+                
+                if (!processResponse.ok) {
+                    const errorText = await processResponse.text();
+                    throw new Error(`Processing failed: ${processResponse.status} ${errorText}`);
+                }
+                
+                const processResult = await processResponse.json();
+                
+                if (!processResult.success) {
+                    throw new Error(processResult.error || 'Processing failed');
+                }
+                
+                updateProgress('Running AI analysis...', 80);
+                
+                // Small delay for smooth UI
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                updateProgress('Finalizing results...', 100);
+                
+                // Display results
+                displayResults(processResult);
+                
+            } catch (error) {
+                console.error('Analysis error:', error);
+                showError(error.message || 'An unexpected error occurred. Please try again.');
+            } finally {
+                // Hide loading
+                $('#loading').hide();
+                $('#analyzeBtn').prop('disabled', false);
+            }
+        }
+        
+        // Update progress
+        function updateProgress(message, percent) {
+            $('#progressBar').show();
+            $('#progressText').show();
+            $('#progressBar .progress-bar').css('width', percent + '%');
+            $('#progressPercent').text(percent + '%');
+            $('#processingSteps').text(message);
+        }
+        
+        // Display results
+        function displayResults(result) {
+            const isReal = result.output === 'REAL';
+            const confidence = result.confidence;
+            const realProb = isReal ? confidence : 100 - confidence;
+            const fakeProb = isReal ? 100 - confidence : confidence;
+            
+            // Update prediction text
+            $('#predictionText').html(`
+                Prediction: 
+                <span class="badge ${isReal ? 'bg-success' : 'bg-danger'} fs-4">
+                    ${result.output}
+                </span>
+            `);
+            
+            $('#confidenceScore').text(confidence.toFixed(1) + '%');
+            
+            // Update probability bars
+            $('#realProbability').text(realProb.toFixed(1) + '%');
+            $('#fakeProbability').text(fakeProb.toFixed(1) + '%');
+            $('#realBar').css('width', realProb + '%');
+            $('#fakeBar').css('width', fakeProb + '%');
+            $('#probabilityBars').show();
+            
+            // Update details
+            const endTime = new Date();
+            const processingTime = (endTime - startTime) / 1000;
+            
+            $('#framesAnalyzed').text(result.frames_analyzed || $('#sequenceLength').val());
+            $('#processingTime').text(processingTime.toFixed(1) + 's');
+            $('#timestamp').text(endTime.toLocaleString());
+            $('#videoName').text(selectedFile.name);
+            
+            // Update model info
+            $('#modelName').text(result.model_name || '{{ model_info.name }}');
+            $('#modelStatusBadge').html(result.model_loaded ? 
+                '<span class="badge bg-success">Loaded</span>' : 
+                '<span class="badge bg-warning">Demo</span>'
+            );
+            $('#modelAccuracy').text((result.model_accuracy || {{ model_info.accuracy }}).toFixed(1) + '%');
+            
+            // Display frame previews if available
+            if (result.preprocessed_images && result.preprocessed_images.length > 0) {
+                $('#framePreviews').empty();
+                result.preprocessed_images.forEach((img, index) => {
+                    $('#framePreviews').append(`
+                        <div class="col-4 col-md-2">
+                            <img src="/static/preprocessed/${img}" class="frame-preview" 
+                                 alt="Frame ${index + 1}" title="Frame ${index + 1}">
+                        </div>
+                    `);
+                });
+                $('#previewsSection').show();
+            } else if (result.faces_cropped_images && result.faces_cropped_images.length > 0) {
+                $('#framePreviews').empty();
+                result.faces_cropped_images.forEach((img, index) => {
+                    $('#framePreviews').append(`
+                        <div class="col-4 col-md-2">
+                            <img src="/static/cropped/${img}" class="frame-preview" 
+                                 alt="Face ${index + 1}" title="Face ${index + 1}">
+                        </div>
+                    `);
+                });
+                $('#previewsSection').show();
+            }
+            
+            // Show results section
+            $('#resultsSection').show();
+            $('html, body').animate({
+                scrollTop: $('#resultsSection').offset().top
+            }, 500);
+        }
+        
+        // Show error
+        function showError(message) {
+            $('#errorMessage').text(message);
+            $('#errorAlert').show();
+            
+            // Auto-hide after 10 seconds
+            setTimeout(() => {
+                $('#errorAlert').hide();
+            }, 10000);
+        }
+        
+        // Helper function for fetch with timeout
+        function fetchWithTimeout(url, options = {}) {
+            const { timeout = 30000, ...fetchOptions } = options;
+            
+            return new Promise((resolve, reject) => {
+                const controller = new AbortController();
+                const { signal } = controller;
+                
+                const timer = setTimeout(() => {
+                    controller.abort();
+                    reject(new Error('Request timed out. Please try again.'));
+                }, timeout);
+                
+                fetch(url, { ...fetchOptions, signal })
+                    .then(response => {
+                        clearTimeout(timer);
+                        resolve(response);
+                    })
+                    .catch(error => {
+                        clearTimeout(timer);
+                        if (error.name === 'AbortError') {
+                            reject(new Error('Request timed out. Please try a smaller video.'));
+                        } else if (error.message && error.message.includes('fetch')) {
+                            reject(new Error('Network error. Please check your connection.'));
+                        } else {
+                            reject(error);
+                        }
+                    });
+            });
+        }
+        
+        // Initialize
+        $('#sliderValue').text($('#sequenceLength').val());
+        
+        // Check if model is loaded
+        {% if not model_info.loaded %}
+        showError('Running in demo mode. Model not properly loaded. Using simulated predictions.');
+        {% endif %}
+    });
+    </script>
+</body>
+</html>

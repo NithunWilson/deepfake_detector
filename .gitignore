@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+
+# Data
+data/
+
+# Models (weights)
+models/*.pth
+
+# Uploads
+uploads/
+
+# Env
+.env
+
+# OS
+.DS_Store
